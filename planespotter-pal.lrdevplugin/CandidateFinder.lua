@@ -88,34 +88,60 @@ function CandidateFinder.findCandidates(photoData)
     for _, airport in ipairs(airports) do
         logger:info("Querying " .. provider.getName() .. " for " .. airport.icao)
 
-        local arrivals, arrErr = provider.getArrivals(
-            airport.icao, dateTimeFrom, dateTimeTo, apiKey
-        )
-        if arrivals then
-            for _, c in ipairs(arrivals) do
-                local key = (c.flightNumber or "") .. "_" .. c.direction
-                if not seen[key] then
-                    seen[key] = true
-                    allCandidates[#allCandidates + 1] = c
+        -- Prefer getAllFlights (single API call) if provider supports it
+        if provider.getAllFlights then
+            local arrivals, departures, err = provider.getAllFlights(
+                airport.icao, dateTimeFrom, dateTimeTo, apiKey
+            )
+            if err then
+                logger:warn("Flights error for " .. airport.icao .. ": " .. err)
+            else
+                for _, c in ipairs(arrivals or {}) do
+                    local key = (c.flightNumber or "") .. "_" .. c.direction
+                    if not seen[key] then
+                        seen[key] = true
+                        allCandidates[#allCandidates + 1] = c
+                    end
+                end
+                for _, c in ipairs(departures or {}) do
+                    local key = (c.flightNumber or "") .. "_" .. c.direction
+                    if not seen[key] then
+                        seen[key] = true
+                        allCandidates[#allCandidates + 1] = c
+                    end
                 end
             end
-        elseif arrErr then
-            logger:warn("Arrivals error for " .. airport.icao .. ": " .. arrErr)
-        end
+        else
+            -- Fallback: separate calls for providers without getAllFlights
+            local arrivals, arrErr = provider.getArrivals(
+                airport.icao, dateTimeFrom, dateTimeTo, apiKey
+            )
+            if arrivals then
+                for _, c in ipairs(arrivals) do
+                    local key = (c.flightNumber or "") .. "_" .. c.direction
+                    if not seen[key] then
+                        seen[key] = true
+                        allCandidates[#allCandidates + 1] = c
+                    end
+                end
+            elseif arrErr then
+                logger:warn("Arrivals error for " .. airport.icao .. ": " .. arrErr)
+            end
 
-        local departures, depErr = provider.getDepartures(
-            airport.icao, dateTimeFrom, dateTimeTo, apiKey
-        )
-        if departures then
-            for _, c in ipairs(departures) do
-                local key = (c.flightNumber or "") .. "_" .. c.direction
-                if not seen[key] then
-                    seen[key] = true
-                    allCandidates[#allCandidates + 1] = c
+            local departures, depErr = provider.getDepartures(
+                airport.icao, dateTimeFrom, dateTimeTo, apiKey
+            )
+            if departures then
+                for _, c in ipairs(departures) do
+                    local key = (c.flightNumber or "") .. "_" .. c.direction
+                    if not seen[key] then
+                        seen[key] = true
+                        allCandidates[#allCandidates + 1] = c
+                    end
                 end
+            elseif depErr then
+                logger:warn("Departures error for " .. airport.icao .. ": " .. depErr)
             end
-        elseif depErr then
-            logger:warn("Departures error for " .. airport.icao .. ": " .. depErr)
         end
     end
 

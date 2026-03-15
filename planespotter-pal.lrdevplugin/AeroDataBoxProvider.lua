@@ -48,37 +48,9 @@ local function formatLocalTime(lrTimestamp)
     return LrDate.timeToUserFormat(lrTimestamp, "%Y-%m-%dT%H:%M")
 end
 
---- Shared fetch for arrivals or departures.
-local function fetchFlights(icaoCode, dateTimeFrom, dateTimeTo, apiKey, direction)
-    local fromStr = formatLocalTime(dateTimeFrom)
-    local toStr   = formatLocalTime(dateTimeTo)
-
-    local url = string.format("%s/%s/%s/%s",
-        BASE_URL, icaoCode, fromStr, toStr)
-
-    local headers = {
-        { field = "X-RapidAPI-Key",  value = apiKey },
-        { field = "X-RapidAPI-Host", value = HOST },
-    }
-
-    local response, respHeaders = LrHttp.get(url, headers)
-    if not response then
-        return nil, "AeroDataBox API request failed"
-    end
-
-    local data, _, err = json.decode(response)
-    if err or not data then
-        return nil, "Failed to parse AeroDataBox response: " .. tostring(err)
-    end
-
-    if data.error then
-        return nil, "AeroDataBox error: " .. tostring(data.error)
-    end
-
+--- Parse a list of flights from one direction in the API response.
+local function parseFlightList(flights, direction, icaoCode)
     local candidates = {}
-    local key = direction == "arrival" and "arrivals" or "departures"
-    local flights = data[key] or {}
-
     for _, flight in ipairs(flights) do
         local movement = flight.movement or {}
         local aircraft = flight.aircraft or {}
@@ -132,16 +104,51 @@ local function fetchFlights(icaoCode, dateTimeFrom, dateTimeTo, apiKey, directio
             direction     = direction,
         })
     end
-
-    return candidates, nil
+    return candidates
 end
 
+--- Fetch all flights (arrivals + departures) in a single API call.
+function AeroDataBoxProvider.getAllFlights(icaoCode, dateTimeFrom, dateTimeTo, apiKey)
+    local fromStr = formatLocalTime(dateTimeFrom)
+    local toStr   = formatLocalTime(dateTimeTo)
+
+    local url = string.format("%s/%s/%s/%s",
+        BASE_URL, icaoCode, fromStr, toStr)
+
+    local headers = {
+        { field = "X-RapidAPI-Key",  value = apiKey },
+        { field = "X-RapidAPI-Host", value = HOST },
+    }
+
+    local response, respHeaders = LrHttp.get(url, headers)
+    if not response then
+        return nil, nil, "AeroDataBox API request failed"
+    end
+
+    local data, _, err = json.decode(response)
+    if err or not data then
+        return nil, nil, "Failed to parse AeroDataBox response: " .. tostring(err)
+    end
+
+    if data.error then
+        return nil, nil, "AeroDataBox error: " .. tostring(data.error)
+    end
+
+    local arrivals = parseFlightList(data.arrivals or {}, "arrival", icaoCode)
+    local departures = parseFlightList(data.departures or {}, "departure", icaoCode)
+
+    return arrivals, departures, nil
+end
+
+-- Legacy single-direction methods (for provider interface compatibility)
 function AeroDataBoxProvider.getArrivals(icaoCode, dateTimeFrom, dateTimeTo, apiKey)
-    return fetchFlights(icaoCode, dateTimeFrom, dateTimeTo, apiKey, "arrival")
+    local arrivals, _, err = AeroDataBoxProvider.getAllFlights(icaoCode, dateTimeFrom, dateTimeTo, apiKey)
+    return arrivals, err
 end
 
 function AeroDataBoxProvider.getDepartures(icaoCode, dateTimeFrom, dateTimeTo, apiKey)
-    return fetchFlights(icaoCode, dateTimeFrom, dateTimeTo, apiKey, "departure")
+    local _, departures, err = AeroDataBoxProvider.getAllFlights(icaoCode, dateTimeFrom, dateTimeTo, apiKey)
+    return departures, err
 end
 
 return AeroDataBoxProvider
