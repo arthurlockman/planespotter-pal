@@ -9,6 +9,7 @@
 
 local LrDate   = import "LrDate"
 local LrLogger = import "LrLogger"
+local LrTasks  = import "LrTasks"
 
 local logger = LrLogger("PlaneSpotterPal")
 
@@ -33,7 +34,7 @@ local function loadProvider()
         return nil, nil, "Unknown provider: " .. tostring(name)
     end
 
-    local ok, provider = pcall(require, moduleName)
+    local ok, provider = LrTasks.pcall(require, moduleName)
     if not ok then
         return nil, nil, "Failed to load provider: " .. tostring(provider)
     end
