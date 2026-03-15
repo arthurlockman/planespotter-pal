@@ -200,24 +200,6 @@ function CandidateDialog.show(candidates, photo, searchContext)
             else depCount = depCount + 1 end
         end
 
-        -- Direction filter
-        props.filterDirection = "all"
-        props.showAll = true
-        props.showArrivals = false
-        props.showDepartures = false
-        local filterItems = {
-            { title = string.format("All (%d)", #candidates),  value = "all" },
-            { title = string.format("Arrivals (%d)", arrCount), value = "arrival" },
-            { title = string.format("Departures (%d)", depCount), value = "departure" },
-        }
-
-        -- Observer: toggle which scrolled view is visible
-        props:addObserver("filterDirection", function(_, _, newValue)
-            props.showAll        = (newValue == "all")
-            props.showArrivals   = (newValue == "arrival")
-            props.showDepartures = (newValue == "departure")
-        end)
-
         -- Build selection items for popup (include direction tag)
         local popupItems = {}
         for i, c in ipairs(candidates) do
@@ -239,8 +221,7 @@ function CandidateDialog.show(candidates, photo, searchContext)
         local arrRows = {}
         local depRows = {}
         for i = 1, #candidates do
-            local row = buildCandidateRow(f, candidates[i], i, thumbnailCache)
-            allRows[#allRows + 1] = row
+            allRows[#allRows + 1] = buildCandidateRow(f, candidates[i], i, thumbnailCache)
             allRows[#allRows + 1] = f:separator { fill_horizontal = 1 }
             if candidates[i].direction == "arrival" then
                 arrRows[#arrRows + 1] = buildCandidateRow(f, candidates[i], i, thumbnailCache)
@@ -259,19 +240,10 @@ function CandidateDialog.show(candidates, photo, searchContext)
             contentItems[#contentItems + 1] = item
         end
 
-        contentItems[#contentItems + 1] = f:row {
-            spacing = 12,
-            f:static_text {
-                title = string.format("Found %d candidate flight(s).", #candidates),
-                font = "<system/bold>",
-                fill_horizontal = 1,
-            },
-            f:static_text { title = "Filter:" },
-            f:popup_menu {
-                items = filterItems,
-                value = LrView.bind("filterDirection"),
-                width = 160,
-            },
+        contentItems[#contentItems + 1] = f:static_text {
+            title = string.format("Found %d candidate flight(s). Select the correct aircraft:",
+                #candidates),
+            font = "<system/bold>",
         }
 
         contentItems[#contentItems + 1] = f:row {
@@ -285,21 +257,32 @@ function CandidateDialog.show(candidates, photo, searchContext)
 
         contentItems[#contentItems + 1] = f:separator { fill_horizontal = 1 }
 
-        -- Three scrolled views, only one visible at a time
-        contentItems[#contentItems + 1] = f:scrolled_view {
-            visible = LrView.bind("showAll"),
-            width = 700, height = 500,
-            f:column(allRows),
-        }
-        contentItems[#contentItems + 1] = f:scrolled_view {
-            visible = LrView.bind("showArrivals"),
-            width = 700, height = 500,
-            f:column(arrRows),
-        }
-        contentItems[#contentItems + 1] = f:scrolled_view {
-            visible = LrView.bind("showDepartures"),
-            width = 700, height = 500,
-            f:column(depRows),
+        -- Tab view for filtering by direction
+        contentItems[#contentItems + 1] = f:tab_view {
+            f:tab_view_item {
+                title = string.format("All (%d)", #candidates),
+                identifier = "tab_all",
+                f:scrolled_view {
+                    width = 680, height = 480,
+                    f:column(allRows),
+                },
+            },
+            f:tab_view_item {
+                title = string.format("Arrivals (%d)", arrCount),
+                identifier = "tab_arrivals",
+                f:scrolled_view {
+                    width = 680, height = 480,
+                    f:column(arrRows),
+                },
+            },
+            f:tab_view_item {
+                title = string.format("Departures (%d)", depCount),
+                identifier = "tab_departures",
+                f:scrolled_view {
+                    width = 680, height = 480,
+                    f:column(depRows),
+                },
+            },
         }
 
         contentItems[#contentItems + 1] = f:static_text {
