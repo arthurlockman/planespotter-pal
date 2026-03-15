@@ -44,19 +44,114 @@ LrTasks.startAsyncTask(function()
         return
     end
 
-    -- Confirm batch operations (warns about API usage)
+    -- For multiple photos, offer "Same Aircraft" vs "Each Separately"
+    local batchMode = "single" -- "single", "same", or "each"
     if #photos > 1 then
         local confirm = LrDialogs.confirm(
             "PlaneSpotter Pal",
             string.format(
-                "Process %d photos? This will make approximately %d API calls to %s.",
-                #photos, #photos * 2, prefs.activeProvider
+                "You selected %d photos. Are these all the same aircraft, "
+                .. "or should each photo be identified separately?\n\n"
+                .. "• Same Aircraft — 1 API call, keywords applied to all %d photos\n"
+                .. "• Each Separately — up to %d API calls, one dialog per photo",
+                #photos, #photos, #photos
             ),
-            "Continue", "Cancel"
+            "Same Aircraft", "Cancel", "Each Separately"
         )
         if confirm == "cancel" then return end
+        batchMode = (confirm == "ok") and "same" or "each"
     end
 
+    -- Helper: find candidates for a single photo
+    local function findForPhoto(photo, index)
+        local gps = photo:getRawMetadata("gps")
+        local dateTime = photo:getRawMetadata("dateTimeOriginal")
+
+        if not gps then
+            logger:info("Photo " .. index .. " has no GPS data, skipping")
+            return nil, nil, "no_gps"
+        end
+        if not dateTime then
+            logger:info("Photo " .. index .. " has no capture time, skipping")
+            return nil, nil, "no_time"
+        end
+
+        local heading = photo:getRawMetadata("gpsImgDirection")
+        local focalLength = photo:getRawMetadata("focalLength35mm")
+
+        local ok, candidates, err, searchContext = LrTasks.pcall(CandidateFinder.findCandidates, {
+            lat = gps.latitude,
+            lon = gps.longitude,
+            dateTime = dateTime,
+            heading = heading,
+            focalLength = focalLength,
+        })
+
+        if not ok then
+            return nil, nil, "error", tostring(candidates)
+        end
+        return candidates, searchContext, err and "api_error" or nil, err
+    end
+
+    -- "Same Aircraft" mode: one lookup, apply to all
+    if batchMode == "same" then
+        -- Use the first photo with GPS data for the lookup
+        local refPhoto, refIndex
+        for i, photo in ipairs(photos) do
+            if photo:getRawMetadata("gps") and photo:getRawMetadata("dateTimeOriginal") then
+                refPhoto = photo
+                refIndex = i
+                break
+            end
+        end
+
+        if not refPhoto then
+            LrDialogs.message("PlaneSpotter Pal",
+                "None of the selected photos have GPS and time data.", "warning")
+            return
+        end
+
+        local candidates, searchContext, status, errMsg = findForPhoto(refPhoto, refIndex)
+
+        if status == "error" then
+            LrDialogs.message("PlaneSpotter Pal",
+                "Error finding flights:\n" .. tostring(errMsg), "warning")
+            return
+        elseif status == "api_error" then
+            LrDialogs.message("PlaneSpotter Pal", errMsg, "warning")
+            return
+        elseif not candidates or #candidates == 0 then
+            LrDialogs.message("PlaneSpotter Pal",
+                "No candidate flights found.\n"
+                .. "Try widening the search radius or time window in Settings.",
+                "info")
+            return
+        end
+
+        local selected = CandidateDialog.show(candidates, refPhoto, searchContext)
+        if not selected then return end
+
+        -- Apply keywords to all selected photos
+        local writeErrors = 0
+        for _, photo in ipairs(photos) do
+            local writeOk, writeErr = LrTasks.pcall(
+                KeywordWriter.writeKeywords, catalog, photo, selected
+            )
+            if not writeOk then
+                logger:error("Failed to write keywords: " .. tostring(writeErr))
+                writeErrors = writeErrors + 1
+            end
+        end
+
+        local msg = string.format("Keywords applied to %d photo(s).", #photos - writeErrors)
+        if writeErrors > 0 then
+            msg = msg .. string.format("\n%d photo(s) had errors.", writeErrors)
+        end
+        LrDialogs.message("PlaneSpotter Pal", msg, "info")
+        return
+    end
+
+    -- "Each Separately" or single-photo mode
     local progress = LrProgressScope({
         title = "PlaneSpotter Pal — Identifying Aircraft",
         functionContext = nil,
@@ -72,64 +167,44 @@ LrTasks.startAsyncTask(function()
         progress:setPortionComplete(i - 1, #photos)
         progress:setCaption(string.format("Photo %d of %d", i, #photos))
 
-        local gps = photo:getRawMetadata("gps")
-        local dateTime = photo:getRawMetadata("dateTimeOriginal")
+        local candidates, searchContext, status, errMsg = findForPhoto(photo, i)
 
-        if not gps then
-            logger:info("Photo " .. i .. " has no GPS data, skipping")
+        if status == "no_gps" or status == "no_time" then
             skipped = skipped + 1
-        elseif not dateTime then
-            logger:info("Photo " .. i .. " has no capture time, skipping")
+        elseif status == "error" then
+            logger:error("Unexpected error for photo " .. i .. ": " .. tostring(errMsg))
+            errors = errors + 1
+            local action = LrDialogs.confirm(
+                "PlaneSpotter Pal",
+                "Unexpected error processing photo " .. i .. ":\n" .. tostring(errMsg),
+                "Continue", "Stop"
+            )
+            if action == "cancel" then break end
+        elseif status == "api_error" then
+            logger:warn("Photo " .. i .. ": " .. errMsg)
+            errors = errors + 1
+            if #photos == 1 then
+                LrDialogs.message("PlaneSpotter Pal", errMsg, "warning")
+            end
+        elseif not candidates or #candidates == 0 then
             skipped = skipped + 1
+            if #photos == 1 then
+                LrDialogs.message("PlaneSpotter Pal",
+                    "No candidate flights found.\n"
+                    .. "Try widening the search radius or time window in Settings.",
+                    "info")
+            end
         else
-            local heading = photo:getRawMetadata("gpsImgDirection")
-            local focalLength = photo:getRawMetadata("focalLength35mm")
-
-            local ok, candidates, err, searchContext = LrTasks.pcall(CandidateFinder.findCandidates, {
-                lat = gps.latitude,
-                lon = gps.longitude,
-                dateTime = dateTime,
-                heading = heading,
-                focalLength = focalLength,
-            })
-
-            if not ok then
-                -- pcall caught an unexpected error
-                logger:error("Unexpected error for photo " .. i .. ": " .. tostring(candidates))
-                errors = errors + 1
-                local action = LrDialogs.confirm(
-                    "PlaneSpotter Pal",
-                    "Unexpected error processing photo " .. i .. ":\n" .. tostring(candidates),
-                    "Continue", "Stop"
+            local selected = CandidateDialog.show(candidates, photo, searchContext)
+            if selected then
+                local writeOk, writeErr = LrTasks.pcall(
+                    KeywordWriter.writeKeywords, catalog, photo, selected
                 )
-                if action == "cancel" then break end
-            elseif err then
-                logger:warn("Photo " .. i .. ": " .. err)
-                errors = errors + 1
-                -- For single photos, show the error. For batch, log and continue.
-                if #photos == 1 then
-                    LrDialogs.message("PlaneSpotter Pal", err, "warning")
-                end
-            elseif not candidates or #candidates == 0 then
-                skipped = skipped + 1
-                if #photos == 1 then
-                    LrDialogs.message("PlaneSpotter Pal",
-                        "No candidate flights found.\n"
-                        .. "Try widening the search radius or time window in Settings.",
-                        "info")
-                end
-            else
-                local selected = CandidateDialog.show(candidates, photo, searchContext)
-                if selected then
-                    local writeOk, writeErr = LrTasks.pcall(
-                        KeywordWriter.writeKeywords, catalog, photo, selected
-                    )
-                    if writeOk then
-                        identified = identified + 1
-                    else
-                        logger:error("Failed to write keywords: " .. tostring(writeErr))
-                        errors = errors + 1
-                    end
+                if writeOk then
+                    identified = identified + 1
+                else
+                    logger:error("Failed to write keywords: " .. tostring(writeErr))
+                    errors = errors + 1
                 end
             end
         end
