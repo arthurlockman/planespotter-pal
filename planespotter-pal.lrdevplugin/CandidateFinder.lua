@@ -14,14 +14,44 @@ local logger = LrLogger("PlaneSpotterPal")
 
 local CandidateFinder = {}
 
+-- Provider module names keyed by preference value
+local PROVIDER_MODULES = {
+    AeroDataBox    = "AeroDataBoxProvider",
+    FlightAware    = "FlightAwareProvider",
+    FlightRadar24  = "FR24Provider",
+}
+
+--- Load the active provider module based on preferences.
+-- @return provider module, apiKey string, or nil + error string
+local function loadProvider()
+    local Preferences = require "Preferences"
+    local prefs = Preferences.getPrefs()
+    local name = prefs.activeProvider
+
+    local moduleName = PROVIDER_MODULES[name]
+    if not moduleName then
+        return nil, nil, "Unknown provider: " .. tostring(name)
+    end
+
+    local ok, provider = pcall(require, moduleName)
+    if not ok then
+        return nil, nil, "Failed to load provider: " .. tostring(provider)
+    end
+
+    local apiKey = Preferences.getActiveApiKey()
+    if not apiKey or apiKey == "" then
+        return nil, nil, "No API key configured for " .. name
+    end
+
+    return provider, apiKey, nil
+end
+
 --- Find candidate flights for a photo.
 -- @param photoData table {lat, lon, dateTime, heading (optional), focalLength (optional)}
 -- @return candidates table (array of CandidateFlight), or nil + error string
 function CandidateFinder.findCandidates(photoData)
-    local AirportDatabase  = require "AirportDatabase"
-    local GeoUtils         = require "GeoUtils"
-    local Preferences      = require "Preferences"
-    local ProviderRegistry = require "ProviderRegistry"
+    local AirportDatabase = require "AirportDatabase"
+    local Preferences     = require "Preferences"
 
     local prefs = Preferences.getPrefs()
     local radiusNm    = prefs.searchRadiusNm or 5
@@ -42,14 +72,9 @@ function CandidateFinder.findCandidates(photoData)
     logger:info(string.format("Found %d airport(s) near photo location", #airports))
 
     -- Step 2: Get active provider
-    local provider, provErr = ProviderRegistry.getActiveProvider()
+    local provider, apiKey, provErr = loadProvider()
     if not provider then
         return nil, "Provider error: " .. tostring(provErr)
-    end
-
-    local apiKey = Preferences.getActiveApiKey()
-    if not apiKey or apiKey == "" then
-        return nil, "No API key configured for " .. provider.getName()
     end
 
     -- Step 3: Query arrivals & departures for each airport
@@ -124,10 +149,7 @@ function CandidateFinder._rankCandidates(candidates, photoData)
             c._timeDelta = 9999999
         end
 
-        -- Bearing bonus: lower score is better
         c._bearingScore = 0
-        -- (Bearing filtering would require flight position data;
-        --  with airport-level data we can only rank by time)
     end
 
     -- Sort by time proximity (closest first)
