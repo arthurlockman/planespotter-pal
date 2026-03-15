@@ -12,7 +12,7 @@ local LrLogger = import "LrLogger"
 local LrDate   = import "LrDate"
 
 local json              = require "dkjson"
-local FlightDataProvider = require "providers.FlightDataProvider"
+local FlightDataProvider = require "FlightDataProvider"
 
 local logger = LrLogger("PlaneSpotterPal")
 

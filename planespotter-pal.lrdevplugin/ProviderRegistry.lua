@@ -8,9 +8,9 @@ local Preferences = require "Preferences"
 local ProviderRegistry = {}
 
 local providerModules = {
-    AeroDataBox    = "providers.AeroDataBoxProvider",
-    FlightAware    = "providers.FlightAwareProvider",
-    FlightRadar24  = "providers.FR24Provider",
+    AeroDataBox    = "AeroDataBoxProvider",
+    FlightAware    = "FlightAwareProvider",
+    FlightRadar24  = "FR24Provider",
 }
 
 --- Get the currently active provider module.

@@ -13,7 +13,7 @@ local LrLogger = import "LrLogger"
 local AirportDatabase  = require "AirportDatabase"
 local GeoUtils         = require "GeoUtils"
 local Preferences      = require "Preferences"
-local ProviderRegistry = require "providers.ProviderRegistry"
+local ProviderRegistry = require "ProviderRegistry"
 
 local logger = LrLogger("PlaneSpotterPal")
 
