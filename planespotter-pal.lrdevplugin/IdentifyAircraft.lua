@@ -85,7 +85,7 @@ LrTasks.startAsyncTask(function()
             local heading = photo:getRawMetadata("gpsImgDirection")
             local focalLength = photo:getRawMetadata("focalLength35mm")
 
-            local ok, candidates, err = LrTasks.pcall(CandidateFinder.findCandidates, {
+            local ok, candidates, err, searchContext = LrTasks.pcall(CandidateFinder.findCandidates, {
                 lat = gps.latitude,
                 lon = gps.longitude,
                 dateTime = dateTime,
@@ -119,7 +119,7 @@ LrTasks.startAsyncTask(function()
                         "info")
                 end
             else
-                local selected = CandidateDialog.show(candidates, photo)
+                local selected = CandidateDialog.show(candidates, photo, searchContext)
                 if selected then
                     local writeOk, writeErr = LrTasks.pcall(
                         KeywordWriter.writeKeywords, catalog, photo, selected

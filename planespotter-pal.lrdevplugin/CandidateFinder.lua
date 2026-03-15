@@ -126,8 +126,24 @@ function CandidateFinder.findCandidates(photoData)
     -- Step 4: Rank candidates
     CandidateFinder._rankCandidates(allCandidates, photoData)
 
+    -- Build search context for the dialog
+    local airportNames = {}
+    for _, apt in ipairs(airports) do
+        airportNames[#airportNames + 1] = string.format("%s (%s)", apt.name, apt.icao)
+    end
+
+    local searchContext = {
+        airports      = airportNames,
+        photoTime     = photoData.dateTime,
+        timeWindowMin = prefs.timeWindowMinutes or 5,
+        radiusNm      = radiusNm,
+        providerName  = provider.getName(),
+        lat           = photoData.lat,
+        lon           = photoData.lon,
+    }
+
     logger:info(string.format("Found %d candidate flight(s)", #allCandidates))
-    return allCandidates, nil
+    return allCandidates, nil, searchContext
 end
 
 --- Rank candidates by time proximity and optional bearing match.

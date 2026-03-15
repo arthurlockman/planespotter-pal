@@ -144,8 +144,9 @@ end
 --- Show the candidate selection dialog.
 -- @param candidates array of CandidateFlight
 -- @param photo LrPhoto (for context in the dialog title)
+-- @param searchContext table (optional) {airports, photoTime, timeWindowMin, radiusNm, providerName}
 -- @return selected CandidateFlight, or nil if cancelled
-function CandidateDialog.show(candidates, photo)
+function CandidateDialog.show(candidates, photo, searchContext)
     local result = nil
 
     LrFunctionContext.callWithContext("CandidateDialog", function(context)
@@ -154,6 +155,43 @@ function CandidateDialog.show(candidates, photo)
 
         local f = LrView.osFactory()
         local thumbnailCache = {}
+
+        -- Build search context header
+        local contextRows = {}
+        if searchContext then
+            local photoTimeStr = "Unknown"
+            if searchContext.photoTime then
+                photoTimeStr = LrDate.timeToUserFormat(searchContext.photoTime, "%Y-%m-%d %H:%M:%S")
+            end
+
+            local airportStr = "None"
+            if searchContext.airports and #searchContext.airports > 0 then
+                airportStr = table.concat(searchContext.airports, ", ")
+            end
+
+            contextRows = {
+                f:static_text {
+                    title = "Search Details",
+                    font = "<system/bold>",
+                },
+                f:static_text {
+                    title = string.format("📍 Photo taken: %s", photoTimeStr),
+                    font = "<system/small>",
+                },
+                f:static_text {
+                    title = string.format("✈ Airport(s): %s", airportStr),
+                    font = "<system/small>",
+                },
+                f:static_text {
+                    title = string.format("🔍 Window: ±%d min  •  Radius: %d nm  •  Provider: %s",
+                        searchContext.timeWindowMin or 5,
+                        searchContext.radiusNm or 5,
+                        searchContext.providerName or "Unknown"),
+                    font = "<system/small>",
+                },
+                f:separator { fill_horizontal = 1 },
+            }
+        end
 
         -- Build selection items for popup
         local popupItems = {}
@@ -180,42 +218,46 @@ function CandidateDialog.show(candidates, photo)
             end
         end
 
-        local contents = f:column {
-            spacing = 8,
-            bind_to_object = props,
+        -- Build contents column programmatically (Lua 5.1 can't unpack mid-table)
+        local contentItems = {}
 
-            f:static_text {
-                title = string.format("Found %d candidate flight(s). Select the correct aircraft:",
-                    #candidates),
-                font = "<system/bold>",
-            },
+        -- Add search context if available
+        for _, item in ipairs(contextRows) do
+            contentItems[#contentItems + 1] = item
+        end
 
-            -- Selection dropdown
-            f:row {
-                f:static_text { title = "Select aircraft:" },
-                f:popup_menu {
-                    items = popupItems,
-                    value = LrView.bind("selectedIndex"),
-                    width = 500,
-                },
-            },
+        contentItems[#contentItems + 1] = f:static_text {
+            title = string.format("Found %d candidate flight(s). Select the correct aircraft:",
+                #candidates),
+            font = "<system/bold>",
+        }
 
-            f:separator { fill_horizontal = 1 },
-
-            -- Scrollable candidate list
-            f:scrolled_view {
-                width = 700,
-                height = 500,
-                f:column(rows),
-            },
-
-            -- Attribution note
-            f:static_text {
-                title = "Aircraft photos courtesy of Planespotters.net. Photographer credit shown per image.",
-                font = "<system/small>",
-                text_color = LrColor(0.5, 0.5, 0.5),
+        contentItems[#contentItems + 1] = f:row {
+            f:static_text { title = "Select aircraft:" },
+            f:popup_menu {
+                items = popupItems,
+                value = LrView.bind("selectedIndex"),
+                width = 500,
             },
         }
+
+        contentItems[#contentItems + 1] = f:separator { fill_horizontal = 1 }
+
+        contentItems[#contentItems + 1] = f:scrolled_view {
+            width = 700,
+            height = 500,
+            f:column(rows),
+        }
+
+        contentItems[#contentItems + 1] = f:static_text {
+            title = "Aircraft photos courtesy of Planespotters.net. Photographer credit shown per image.",
+            font = "<system/small>",
+        }
+
+        contentItems.spacing = 8
+        contentItems.bind_to_object = props
+
+        local contents = f:column(contentItems)
 
         local dialogResult = LrDialogs.presentModalDialog({
             title = "PlaneSpotter Pal — Identify Aircraft",

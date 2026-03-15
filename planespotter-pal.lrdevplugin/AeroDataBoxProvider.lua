@@ -56,9 +56,6 @@ local function fetchFlights(icaoCode, dateTimeFrom, dateTimeTo, apiKey, directio
     local url = string.format("%s/%s/%s/%s",
         BASE_URL, icaoCode, fromStr, toStr)
 
-    -- Add direction filter via query parameter
-    url = url .. "?direction=" .. direction
-
     local headers = {
         { field = "X-RapidAPI-Key",  value = apiKey },
         { field = "X-RapidAPI-Host", value = HOST },
@@ -79,60 +76,46 @@ local function fetchFlights(icaoCode, dateTimeFrom, dateTimeTo, apiKey, directio
     end
 
     local candidates = {}
-    local flights = data[direction .. "s"] or data.arrivals or data.departures or {}
+    local key = direction == "arrival" and "arrivals" or "departures"
+    local flights = data[key] or {}
 
     for _, flight in ipairs(flights) do
-        local dep = flight.departure or {}
-        local arr = flight.arrival or {}
+        local movement = flight.movement or {}
         local aircraft = flight.aircraft or {}
         local airline = flight.airline or {}
 
-        local scheduledTime = nil
-        local actualTime = nil
-
-        if direction == "arrival" then
-            if arr.scheduledTime then
-                scheduledTime = LrDate.timeFromComponents(
-                    tonumber(string.sub(arr.scheduledTime, 1, 4)),
-                    tonumber(string.sub(arr.scheduledTime, 6, 7)),
-                    tonumber(string.sub(arr.scheduledTime, 9, 10)),
-                    tonumber(string.sub(arr.scheduledTime, 12, 13)),
-                    tonumber(string.sub(arr.scheduledTime, 15, 16)),
-                    0, "local"
-                )
+        -- Parse time from AeroDataBox {utc, local} objects or plain strings
+        local function parseTime(timeObj)
+            if not timeObj then return nil end
+            local str = timeObj
+            if type(timeObj) == "table" then
+                str = timeObj["local"] or timeObj.utc
             end
-            if arr.actualTime then
-                actualTime = LrDate.timeFromComponents(
-                    tonumber(string.sub(arr.actualTime, 1, 4)),
-                    tonumber(string.sub(arr.actualTime, 6, 7)),
-                    tonumber(string.sub(arr.actualTime, 9, 10)),
-                    tonumber(string.sub(arr.actualTime, 12, 13)),
-                    tonumber(string.sub(arr.actualTime, 15, 16)),
-                    0, "local"
-                )
-            end
-        else
-            if dep.scheduledTime then
-                scheduledTime = LrDate.timeFromComponents(
-                    tonumber(string.sub(dep.scheduledTime, 1, 4)),
-                    tonumber(string.sub(dep.scheduledTime, 6, 7)),
-                    tonumber(string.sub(dep.scheduledTime, 9, 10)),
-                    tonumber(string.sub(dep.scheduledTime, 12, 13)),
-                    tonumber(string.sub(dep.scheduledTime, 15, 16)),
-                    0, "local"
-                )
-            end
-            if dep.actualTime then
-                actualTime = LrDate.timeFromComponents(
-                    tonumber(string.sub(dep.actualTime, 1, 4)),
-                    tonumber(string.sub(dep.actualTime, 6, 7)),
-                    tonumber(string.sub(dep.actualTime, 9, 10)),
-                    tonumber(string.sub(dep.actualTime, 12, 13)),
-                    tonumber(string.sub(dep.actualTime, 15, 16)),
-                    0, "local"
-                )
-            end
+            if type(str) ~= "string" then return nil end
+            -- Handle "2025-03-15 12:00-07:00" or "2025-03-15T12:00"
+            local y, mo, d, h, mi = str:match("(%d+)-(%d+)-(%d+)[T ](%d+):(%d+)")
+            if not y then return nil end
+            return LrDate.timeFromComponents(
+                tonumber(y), tonumber(mo), tonumber(d),
+                tonumber(h), tonumber(mi), 0, "local"
+            )
         end
+
+        -- movement.airport is the OTHER end of the flight
+        local movementAirport = movement.airport or {}
+        local otherCode = movementAirport.icao or movementAirport.iata
+
+        local origin, destination
+        if direction == "arrival" then
+            origin      = otherCode       -- where it came from
+            destination = icaoCode        -- the airport we queried
+        else
+            origin      = icaoCode        -- the airport we queried
+            destination = otherCode       -- where it's going
+        end
+
+        local scheduledTime = parseTime(movement.scheduledTime)
+        local actualTime    = parseTime(movement.runwayTime or movement.revisedTime)
 
         candidates[#candidates + 1] = FlightDataProvider.newCandidate({
             flightNumber  = flight.number,
@@ -142,8 +125,8 @@ local function fetchFlights(icaoCode, dateTimeFrom, dateTimeTo, apiKey, directio
             aircraftType  = aircraft.model,
             aircraftIcao  = aircraft.icaoCode,
             registration  = aircraft.reg,
-            origin        = dep.airport and dep.airport.icao,
-            destination   = arr.airport and arr.airport.icao,
+            origin        = origin,
+            destination   = destination,
             scheduledTime = scheduledTime,
             actualTime    = actualTime,
             direction     = direction,
