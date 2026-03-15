@@ -22,8 +22,8 @@ local DEFAULTS = {
     apiKey_AeroDataBox  = "",
     apiKey_FlightAware  = "",
     apiKey_FlightRadar24 = "",
-    searchRadiusNm      = 5,
-    timeWindowMinutes    = 5,
+    searchRadiusNm      = 10,
+    timeWindowMinutes    = 60,
 }
 
 -- ---------------------------------------------------------------------------
