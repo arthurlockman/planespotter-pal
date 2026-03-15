@@ -247,6 +247,7 @@ function CandidateDialog.show(candidates, photo, searchContext)
                 f:separator { fill_horizontal = 1 },
             }
         end
+        rows.bind_to_object = props
 
         -- Build contents column programmatically (Lua 5.1 can't unpack mid-table)
         local contentItems = {}
