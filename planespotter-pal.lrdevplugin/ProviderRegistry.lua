@@ -3,8 +3,6 @@
     Maps provider names to their modules and returns the active provider.
 ]]
 
-local Preferences = require "Preferences"
-
 local ProviderRegistry = {}
 
 local providerModules = {
@@ -16,6 +14,7 @@ local providerModules = {
 --- Get the currently active provider module.
 -- @return provider module table, or nil + error message
 function ProviderRegistry.getActiveProvider()
+    local Preferences = require "Preferences"
     local prefs = Preferences.getPrefs()
     local name = prefs.activeProvider
 
@@ -35,6 +34,7 @@ end
 --- Get the API key for the active provider.
 -- @return apiKey string, providerName string
 function ProviderRegistry.getActiveApiKey()
+    local Preferences = require "Preferences"
     local prefs = Preferences.getPrefs()
     return Preferences.getActiveApiKey(), prefs.activeProvider
 end

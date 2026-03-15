@@ -10,8 +10,8 @@ local LrView       = import "LrView"
 local LrDate       = import "LrDate"
 local LrLogger     = import "LrLogger"
 local LrBinding    = import "LrBinding"
-local LrColor      = import "LrColor"
 local LrFunctionContext = import "LrFunctionContext"
+local LrColor      = import "LrColor"
 
 local PlaneSpottersAPI = require "PlaneSpottersAPI"
 

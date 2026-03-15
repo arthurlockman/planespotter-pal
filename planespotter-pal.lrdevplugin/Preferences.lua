@@ -8,8 +8,6 @@
 local LrPrefs   = import "LrPrefs"
 local LrDialogs = import "LrDialogs"
 local LrView    = import "LrView"
-local LrBinding = import "LrBinding"
-local LrColor   = import "LrColor"
 
 local Preferences = {}
 
@@ -114,7 +112,6 @@ function Preferences.showSettingsDialog()
         f:static_text {
             title      = "RapidAPI key for AeroDataBox",
             font       = "<system/small>",
-            text_color = LrColor(0.5, 0.5, 0.5),
         },
 
         f:row {
@@ -132,7 +129,6 @@ function Preferences.showSettingsDialog()
         f:static_text {
             title      = "FlightAware AeroAPI key",
             font       = "<system/small>",
-            text_color = LrColor(0.5, 0.5, 0.5),
         },
 
         f:row {
@@ -150,7 +146,6 @@ function Preferences.showSettingsDialog()
         f:static_text {
             title      = "Bearer token for FlightRadar24 API",
             font       = "<system/small>",
-            text_color = LrColor(0.5, 0.5, 0.5),
         },
 
         f:spacer { height = 12 },

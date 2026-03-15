@@ -13,12 +13,12 @@ local LrProgressScope = import "LrProgressScope"
 
 local logger = LrLogger("PlaneSpotterPal")
 
-local Preferences     = require "Preferences"
-local CandidateFinder = require "CandidateFinder"
-local CandidateDialog = require "CandidateDialog"
-local KeywordWriter   = require "KeywordWriter"
-
 LrTasks.startAsyncTask(function()
+    local Preferences     = require "Preferences"
+    local CandidateFinder = require "CandidateFinder"
+    local CandidateDialog = require "CandidateDialog"
+    local KeywordWriter   = require "KeywordWriter"
+
     local catalog = LrApplication.activeCatalog()
     local photos = catalog:getTargetPhotos()
 

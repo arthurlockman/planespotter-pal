@@ -10,11 +10,6 @@
 local LrDate   = import "LrDate"
 local LrLogger = import "LrLogger"
 
-local AirportDatabase  = require "AirportDatabase"
-local GeoUtils         = require "GeoUtils"
-local Preferences      = require "Preferences"
-local ProviderRegistry = require "ProviderRegistry"
-
 local logger = LrLogger("PlaneSpotterPal")
 
 local CandidateFinder = {}
@@ -23,6 +18,11 @@ local CandidateFinder = {}
 -- @param photoData table {lat, lon, dateTime, heading (optional), focalLength (optional)}
 -- @return candidates table (array of CandidateFlight), or nil + error string
 function CandidateFinder.findCandidates(photoData)
+    local AirportDatabase  = require "AirportDatabase"
+    local GeoUtils         = require "GeoUtils"
+    local Preferences      = require "Preferences"
+    local ProviderRegistry = require "ProviderRegistry"
+
     local prefs = Preferences.getPrefs()
     local radiusNm    = prefs.searchRadiusNm or 5
     local timeWindow  = (prefs.timeWindowMinutes or 5) * 60 -- convert to seconds
@@ -106,6 +106,7 @@ end
 
 --- Rank candidates by time proximity and optional bearing match.
 function CandidateFinder._rankCandidates(candidates, photoData)
+    local GeoUtils = require "GeoUtils"
     local photoTime = photoData.dateTime
     local heading = photoData.heading
     local fov = nil
