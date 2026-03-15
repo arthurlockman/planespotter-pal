@@ -95,6 +95,11 @@ LrTasks.startAsyncTask(function()
 
     -- "Same Aircraft" mode: one lookup, apply to all
     if batchMode == "same" then
+        local sameProgress = LrProgressScope({
+            title = "PlaneSpotter Pal — Finding flights…",
+        })
+        sameProgress:setIndeterminate()
+
         -- Use the first photo with GPS data for the lookup
         local refPhoto, refIndex
         for i, photo in ipairs(photos) do
@@ -106,21 +111,26 @@ LrTasks.startAsyncTask(function()
         end
 
         if not refPhoto then
+            sameProgress:done()
             LrDialogs.message("PlaneSpotter Pal",
                 "None of the selected photos have GPS and time data.", "warning")
             return
         end
 
+        sameProgress:setCaption("Querying flight data…")
         local candidates, searchContext, status, errMsg = findForPhoto(refPhoto, refIndex)
 
         if status == "error" then
+            sameProgress:done()
             LrDialogs.message("PlaneSpotter Pal",
                 "Error finding flights:\n" .. tostring(errMsg), "warning")
             return
         elseif status == "api_error" then
+            sameProgress:done()
             LrDialogs.message("PlaneSpotter Pal", errMsg, "warning")
             return
         elseif not candidates or #candidates == 0 then
+            sameProgress:done()
             LrDialogs.message("PlaneSpotter Pal",
                 "No candidate flights found.\n"
                 .. "Try widening the search radius or time window in Settings.",
@@ -128,12 +138,20 @@ LrTasks.startAsyncTask(function()
             return
         end
 
+        sameProgress:setCaption(string.format("Loading thumbnails for %d candidates…", #candidates))
+        sameProgress:done()
+
         local selected = CandidateDialog.show(candidates, refPhoto, searchContext)
         if not selected then return end
 
         -- Apply keywords to all selected photos
+        local writeProgress = LrProgressScope({
+            title = "PlaneSpotter Pal — Applying keywords…",
+        })
         local writeErrors = 0
-        for _, photo in ipairs(photos) do
+        for i, photo in ipairs(photos) do
+            writeProgress:setPortionComplete(i - 1, #photos)
+            writeProgress:setCaption(string.format("Photo %d of %d", i, #photos))
             local writeOk, writeErr = LrTasks.pcall(
                 KeywordWriter.writeKeywords, catalog, photo, selected
             )
@@ -142,6 +160,7 @@ LrTasks.startAsyncTask(function()
                 writeErrors = writeErrors + 1
             end
         end
+        writeProgress:done()
 
         local msg = string.format("Keywords applied to %d photo(s).", #photos - writeErrors)
         if writeErrors > 0 then
