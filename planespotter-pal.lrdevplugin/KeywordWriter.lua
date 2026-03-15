@@ -22,53 +22,59 @@ local KeywordWriter = {}
 function KeywordWriter.writeKeywords(catalog, photo, candidate)
     catalog:withWriteAccessDo("PlaneSpotter Pal: Add Aircraft Keywords", function()
         -- Create hierarchical keywords: Aircraft > Airline > Type > Registration
-        local rootKeyword = catalog:createKeyword("Aircraft", {}, false, nil, true)
+        -- includeOnExport = true so they appear in keyword tags
+        local rootKeyword = catalog:createKeyword("Aircraft", {}, true, nil, true)
+        photo:addKeyword(rootKeyword)
 
         local airlineKeyword
         if candidate.airline and candidate.airline ~= "Unknown" then
             airlineKeyword = catalog:createKeyword(
-                candidate.airline, {}, false, rootKeyword, true
+                candidate.airline, {}, true, rootKeyword, true
             )
+            photo:addKeyword(airlineKeyword)
         end
 
         local typeKeyword
         if candidate.aircraftType then
             local parent = airlineKeyword or rootKeyword
             typeKeyword = catalog:createKeyword(
-                candidate.aircraftType, {}, false, parent, true
+                candidate.aircraftType, {}, true, parent, true
             )
+            photo:addKeyword(typeKeyword)
         end
 
-        local regKeyword
         if candidate.registration then
             local parent = typeKeyword or airlineKeyword or rootKeyword
-            regKeyword = catalog:createKeyword(
-                candidate.registration, {}, false, parent, true
+            local regKeyword = catalog:createKeyword(
+                candidate.registration, {}, true, parent, true
             )
+            photo:addKeyword(regKeyword)
         end
 
-        -- Add the most specific keyword (Lightroom inherits parent keywords)
-        local leafKeyword = regKeyword or typeKeyword or airlineKeyword or rootKeyword
-        photo:addKeyword(leafKeyword)
-
-        -- Add flat keywords for flight number and route
+        -- Flat keywords: flight number, callsign, route, ICAO type
         if candidate.flightNumber and candidate.flightNumber ~= "Unknown" then
             local flightKw = catalog:createKeyword(
-                candidate.flightNumber, {}, false, nil, true
+                candidate.flightNumber, {}, true, nil, true
             )
             photo:addKeyword(flightKw)
         end
 
+        if candidate.callsign and candidate.callsign ~= "" then
+            local csKw = catalog:createKeyword(
+                candidate.callsign, {}, true, nil, true
+            )
+            photo:addKeyword(csKw)
+        end
+
         if candidate.origin and candidate.destination then
             local routeStr = candidate.origin .. "-" .. candidate.destination
-            local routeKw = catalog:createKeyword(routeStr, {}, false, nil, true)
+            local routeKw = catalog:createKeyword(routeStr, {}, true, nil, true)
             photo:addKeyword(routeKw)
         end
 
-        -- Add ICAO aircraft type code as keyword if available
         if candidate.aircraftIcao then
             local icaoKw = catalog:createKeyword(
-                candidate.aircraftIcao, {}, false, nil, true
+                candidate.aircraftIcao, {}, true, nil, true
             )
             photo:addKeyword(icaoKw)
         end
