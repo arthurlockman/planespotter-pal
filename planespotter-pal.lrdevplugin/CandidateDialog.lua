@@ -193,12 +193,28 @@ function CandidateDialog.show(candidates, photo, searchContext)
             }
         end
 
-        -- Build selection items for popup
+        -- Count arrivals & departures
+        local arrCount, depCount = 0, 0
+        for _, c in ipairs(candidates) do
+            if c.direction == "arrival" then arrCount = arrCount + 1
+            else depCount = depCount + 1 end
+        end
+
+        -- Direction filter
+        props.filterDirection = "all"
+        local filterItems = {
+            { title = string.format("All (%d)", #candidates),  value = "all" },
+            { title = string.format("Arrivals (%d)", arrCount), value = "arrival" },
+            { title = string.format("Departures (%d)", depCount), value = "departure" },
+        }
+
+        -- Build selection items for popup (include direction tag)
         local popupItems = {}
         for i, c in ipairs(candidates) do
+            local tag = c.direction == "arrival" and "ARR" or "DEP"
             popupItems[i] = {
-                title = string.format("%d. %s — %s %s (%s)",
-                    i,
+                title = string.format("%d. [%s] %s — %s %s (%s)",
+                    i, tag,
                     c.flightNumber or "?",
                     c.airline or "",
                     c.aircraftType or "",
@@ -208,14 +224,28 @@ function CandidateDialog.show(candidates, photo, searchContext)
             }
         end
 
-        -- Build candidate detail rows (show top 10 to keep dialog manageable)
-        local maxDisplay = math.min(#candidates, 10)
-        local rows = {}
-        for i = 1, maxDisplay do
-            rows[#rows + 1] = buildCandidateRow(f, candidates[i], i, thumbnailCache)
-            if i < maxDisplay then
-                rows[#rows + 1] = f:separator { fill_horizontal = 1 }
+        -- Initialize per-row visibility properties
+        for i = 1, #candidates do
+            props["row_" .. i .. "_visible"] = true
+        end
+
+        -- Observer: when filter changes, toggle row visibility
+        props:addObserver("filterDirection", function(_, _, newValue)
+            for i, c in ipairs(candidates) do
+                props["row_" .. i .. "_visible"] =
+                    (newValue == "all" or c.direction == newValue)
             end
+        end)
+
+        -- Build all candidate rows with visibility binding
+        local rows = {}
+        for i = 1, #candidates do
+            rows[#rows + 1] = f:column {
+                visible = LrView.bind("row_" .. i .. "_visible"),
+                fill_horizontal = 1,
+                buildCandidateRow(f, candidates[i], i, thumbnailCache),
+                f:separator { fill_horizontal = 1 },
+            }
         end
 
         -- Build contents column programmatically (Lua 5.1 can't unpack mid-table)
@@ -226,10 +256,19 @@ function CandidateDialog.show(candidates, photo, searchContext)
             contentItems[#contentItems + 1] = item
         end
 
-        contentItems[#contentItems + 1] = f:static_text {
-            title = string.format("Found %d candidate flight(s). Select the correct aircraft:",
-                #candidates),
-            font = "<system/bold>",
+        contentItems[#contentItems + 1] = f:row {
+            spacing = 12,
+            f:static_text {
+                title = string.format("Found %d candidate flight(s).", #candidates),
+                font = "<system/bold>",
+                fill_horizontal = 1,
+            },
+            f:static_text { title = "Filter:" },
+            f:popup_menu {
+                items = filterItems,
+                value = LrView.bind("filterDirection"),
+                width = 160,
+            },
         }
 
         contentItems[#contentItems + 1] = f:row {
