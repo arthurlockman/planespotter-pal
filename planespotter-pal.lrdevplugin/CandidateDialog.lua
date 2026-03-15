@@ -202,11 +202,21 @@ function CandidateDialog.show(candidates, photo, searchContext)
 
         -- Direction filter
         props.filterDirection = "all"
+        props.showAll = true
+        props.showArrivals = false
+        props.showDepartures = false
         local filterItems = {
             { title = string.format("All (%d)", #candidates),  value = "all" },
             { title = string.format("Arrivals (%d)", arrCount), value = "arrival" },
             { title = string.format("Departures (%d)", depCount), value = "departure" },
         }
+
+        -- Observer: toggle which scrolled view is visible
+        props:addObserver("filterDirection", function(_, _, newValue)
+            props.showAll        = (newValue == "all")
+            props.showArrivals   = (newValue == "arrival")
+            props.showDepartures = (newValue == "departure")
+        end)
 
         -- Build selection items for popup (include direction tag)
         local popupItems = {}
@@ -224,30 +234,22 @@ function CandidateDialog.show(candidates, photo, searchContext)
             }
         end
 
-        -- Initialize per-row visibility properties
+        -- Build row lists: all, arrivals-only, departures-only
+        local allRows = {}
+        local arrRows = {}
+        local depRows = {}
         for i = 1, #candidates do
-            props["row_" .. i .. "_visible"] = true
-        end
-
-        -- Observer: when filter changes, toggle row visibility
-        props:addObserver("filterDirection", function(_, _, newValue)
-            for i, c in ipairs(candidates) do
-                props["row_" .. i .. "_visible"] =
-                    (newValue == "all" or c.direction == newValue)
+            local row = buildCandidateRow(f, candidates[i], i, thumbnailCache)
+            allRows[#allRows + 1] = row
+            allRows[#allRows + 1] = f:separator { fill_horizontal = 1 }
+            if candidates[i].direction == "arrival" then
+                arrRows[#arrRows + 1] = buildCandidateRow(f, candidates[i], i, thumbnailCache)
+                arrRows[#arrRows + 1] = f:separator { fill_horizontal = 1 }
+            else
+                depRows[#depRows + 1] = buildCandidateRow(f, candidates[i], i, thumbnailCache)
+                depRows[#depRows + 1] = f:separator { fill_horizontal = 1 }
             end
-        end)
-
-        -- Build all candidate rows with visibility binding
-        local rows = {}
-        for i = 1, #candidates do
-            rows[#rows + 1] = f:column {
-                visible = LrView.bind("row_" .. i .. "_visible"),
-                fill_horizontal = 1,
-                buildCandidateRow(f, candidates[i], i, thumbnailCache),
-                f:separator { fill_horizontal = 1 },
-            }
         end
-        rows.bind_to_object = props
 
         -- Build contents column programmatically (Lua 5.1 can't unpack mid-table)
         local contentItems = {}
@@ -283,10 +285,21 @@ function CandidateDialog.show(candidates, photo, searchContext)
 
         contentItems[#contentItems + 1] = f:separator { fill_horizontal = 1 }
 
+        -- Three scrolled views, only one visible at a time
         contentItems[#contentItems + 1] = f:scrolled_view {
-            width = 700,
-            height = 500,
-            f:column(rows),
+            visible = LrView.bind("showAll"),
+            width = 700, height = 500,
+            f:column(allRows),
+        }
+        contentItems[#contentItems + 1] = f:scrolled_view {
+            visible = LrView.bind("showArrivals"),
+            width = 700, height = 500,
+            f:column(arrRows),
+        }
+        contentItems[#contentItems + 1] = f:scrolled_view {
+            visible = LrView.bind("showDepartures"),
+            width = 700, height = 500,
+            f:column(depRows),
         }
 
         contentItems[#contentItems + 1] = f:static_text {
