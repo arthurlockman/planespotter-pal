@@ -138,9 +138,9 @@ local function buildCandidateRow(f, candidate, index, thumbnailCache)
         margin_top = index > 1 and 8 or 0,
         f:static_text {
             title = tostring(index),
-            font = "<system/bold>",
-            text_color = LrColor(0.5, 0.5, 0.5),
-            width = 24,
+            font = { name = "Helvetica", size = 24 },
+            text_color = LrColor(0.45, 0.45, 0.45),
+            width = 30,
             alignment = "right",
         },
         thumbView,
@@ -221,13 +221,14 @@ function CandidateDialog.show(candidates, photo, searchContext)
             for pos, idx in ipairs(indices) do
                 local c = candidates[idx]
                 items[#items + 1] = {
-                    title = string.format("%s — %s %s (%s)",
+                    title = string.format("%d. %s — %s %s (%s)",
+                        pos,
                         c.flightNumber or "?",
                         c.airline or "",
                         c.aircraftType or "",
                         c.registration or "?"
                     ),
-                    value = idx,  -- store original index for lookup
+                    value = idx,
                 }
                 rows[#rows + 1] = buildCandidateRow(f, c, pos, thumbnailCache)
                 rows[#rows + 1] = f:separator { fill_horizontal = 1 }
@@ -240,8 +241,8 @@ function CandidateDialog.show(candidates, photo, searchContext)
         for i, c in ipairs(candidates) do
             local tag = c.direction == "arrival" and "ARR" or "DEP"
             allItems[i] = {
-                title = string.format("[%s] %s — %s %s (%s)",
-                    tag,
+                title = string.format("%d. [%s] %s — %s %s (%s)",
+                    i, tag,
                     c.flightNumber or "?",
                     c.airline or "",
                     c.aircraftType or "",
