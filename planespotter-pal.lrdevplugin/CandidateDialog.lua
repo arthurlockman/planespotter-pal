@@ -193,18 +193,47 @@ function CandidateDialog.show(candidates, photo, searchContext)
             }
         end
 
-        -- Count arrivals & departures
+        -- Count arrivals & departures and build filtered index lists
         local arrCount, depCount = 0, 0
-        for _, c in ipairs(candidates) do
-            if c.direction == "arrival" then arrCount = arrCount + 1
-            else depCount = depCount + 1 end
+        local arrIndices = {}
+        local depIndices = {}
+        for i, c in ipairs(candidates) do
+            if c.direction == "arrival" then
+                arrCount = arrCount + 1
+                arrIndices[#arrIndices + 1] = i
+            else
+                depCount = depCount + 1
+                depIndices[#depIndices + 1] = i
+            end
         end
 
-        -- Build selection items for popup (include direction tag)
-        local popupItems = {}
+        -- Helper: build a popup items list and rows for a subset of candidates
+        local function buildTabContent(indices, label)
+            local items = {}
+            local rows = {}
+            for pos, idx in ipairs(indices) do
+                local c = candidates[idx]
+                items[#items + 1] = {
+                    title = string.format("%d. %s — %s %s (%s)",
+                        pos,
+                        c.flightNumber or "?",
+                        c.airline or "",
+                        c.aircraftType or "",
+                        c.registration or "?"
+                    ),
+                    value = idx,  -- store original index for lookup
+                }
+                rows[#rows + 1] = buildCandidateRow(f, c, pos, thumbnailCache)
+                rows[#rows + 1] = f:separator { fill_horizontal = 1 }
+            end
+            return items, rows
+        end
+
+        -- Build "All" list with direction tags
+        local allItems = {}
         for i, c in ipairs(candidates) do
             local tag = c.direction == "arrival" and "ARR" or "DEP"
-            popupItems[i] = {
+            allItems[i] = {
                 title = string.format("%d. [%s] %s — %s %s (%s)",
                     i, tag,
                     c.flightNumber or "?",
@@ -215,22 +244,23 @@ function CandidateDialog.show(candidates, photo, searchContext)
                 value = i,
             }
         end
-
-        -- Build row lists: all, arrivals-only, departures-only
         local allRows = {}
-        local arrRows = {}
-        local depRows = {}
         for i = 1, #candidates do
             allRows[#allRows + 1] = buildCandidateRow(f, candidates[i], i, thumbnailCache)
             allRows[#allRows + 1] = f:separator { fill_horizontal = 1 }
-            if candidates[i].direction == "arrival" then
-                arrRows[#arrRows + 1] = buildCandidateRow(f, candidates[i], i, thumbnailCache)
-                arrRows[#arrRows + 1] = f:separator { fill_horizontal = 1 }
-            else
-                depRows[#depRows + 1] = buildCandidateRow(f, candidates[i], i, thumbnailCache)
-                depRows[#depRows + 1] = f:separator { fill_horizontal = 1 }
-            end
         end
+
+        local arrItems, arrRows = buildTabContent(arrIndices, "ARR")
+        local depItems, depRows = buildTabContent(depIndices, "DEP")
+
+        -- Each tab gets its own selection property; sync them to selectedIndex
+        props.selAll = 1
+        props.selArr = arrIndices[1] or 1
+        props.selDep = depIndices[1] or 1
+
+        props:addObserver("selAll", function(_, _, v) props.selectedIndex = v end)
+        props:addObserver("selArr", function(_, _, v) props.selectedIndex = v end)
+        props:addObserver("selDep", function(_, _, v) props.selectedIndex = v end)
 
         -- Build contents column programmatically (Lua 5.1 can't unpack mid-table)
         local contentItems = {}
@@ -246,41 +276,66 @@ function CandidateDialog.show(candidates, photo, searchContext)
             font = "<system/bold>",
         }
 
-        contentItems[#contentItems + 1] = f:row {
-            f:static_text { title = "Select aircraft:" },
-            f:popup_menu {
-                items = popupItems,
-                value = LrView.bind("selectedIndex"),
-                width = 500,
-            },
-        }
-
-        contentItems[#contentItems + 1] = f:separator { fill_horizontal = 1 }
-
-        -- Tab view for filtering by direction
+        -- Tab view with per-tab dropdown + scrolled list
         contentItems[#contentItems + 1] = f:tab_view {
             f:tab_view_item {
                 title = string.format("All (%d)", #candidates),
                 identifier = "tab_all",
-                f:scrolled_view {
-                    width = 680, height = 480,
-                    f:column(allRows),
+                f:column {
+                    spacing = 8,
+                    bind_to_object = props,
+                    f:row {
+                        f:static_text { title = "Select aircraft:" },
+                        f:popup_menu {
+                            items = allItems,
+                            value = LrView.bind("selAll"),
+                            width = 560,
+                        },
+                    },
+                    f:scrolled_view {
+                        width = 680, height = 440,
+                        f:column(allRows),
+                    },
                 },
             },
             f:tab_view_item {
                 title = string.format("Arrivals (%d)", arrCount),
                 identifier = "tab_arrivals",
-                f:scrolled_view {
-                    width = 680, height = 480,
-                    f:column(arrRows),
+                f:column {
+                    spacing = 8,
+                    bind_to_object = props,
+                    f:row {
+                        f:static_text { title = "Select aircraft:" },
+                        f:popup_menu {
+                            items = arrItems,
+                            value = LrView.bind("selArr"),
+                            width = 560,
+                        },
+                    },
+                    f:scrolled_view {
+                        width = 680, height = 440,
+                        f:column(arrRows),
+                    },
                 },
             },
             f:tab_view_item {
                 title = string.format("Departures (%d)", depCount),
                 identifier = "tab_departures",
-                f:scrolled_view {
-                    width = 680, height = 480,
-                    f:column(depRows),
+                f:column {
+                    spacing = 8,
+                    bind_to_object = props,
+                    f:row {
+                        f:static_text { title = "Select aircraft:" },
+                        f:popup_menu {
+                            items = depItems,
+                            value = LrView.bind("selDep"),
+                            width = 560,
+                        },
+                    },
+                    f:scrolled_view {
+                        width = 680, height = 440,
+                        f:column(depRows),
+                    },
                 },
             },
         }
