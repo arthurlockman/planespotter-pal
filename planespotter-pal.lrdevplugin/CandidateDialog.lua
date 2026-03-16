@@ -175,7 +175,7 @@ function CandidateDialog.show(candidates, photo, searchContext)
 
                 local photoInfo = PlaneSpottersAPI.getPhotoByRegistration(reg)
                 if photoInfo and photoInfo.thumbnailUrl then
-                    local thumbPath = PlaneSpottersAPI.downloadThumbnail(photoInfo.thumbnailUrl)
+                    local thumbPath = PlaneSpottersAPI.downloadThumbnail(photoInfo.thumbnailUrl, reg)
                     thumbnailCache[reg] = { path = thumbPath, info = photoInfo }
                 else
                     thumbnailCache[reg] = { path = false, info = nil }
@@ -419,6 +419,9 @@ function CandidateDialog.show(candidates, photo, searchContext)
             end
         end
     end)
+
+    -- Clean up stale cached thumbnails (>24h per Planespotters.net ToS)
+    PlaneSpottersAPI.cleanupThumbnails()
 
     return result
 end

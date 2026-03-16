@@ -77,21 +77,39 @@ function PlaneSpottersAPI._fetchPhoto(url)
 end
 
 --- Download a thumbnail image to a temp file for display in LrView:picture.
+-- Uses registration-based filenames to avoid duplicate downloads within a session.
 -- @param thumbnailUrl string The CDN URL from the API response
+-- @param registration string (optional) Used for stable filename
 -- @return string path to temp file, or nil on failure
-function PlaneSpottersAPI.downloadThumbnail(thumbnailUrl)
+function PlaneSpottersAPI.downloadThumbnail(thumbnailUrl, registration)
     if not thumbnailUrl then return nil end
+
+    local tempDir = LrPathUtils.getStandardFilePath("temp")
+    local pspDir = LrPathUtils.child(tempDir, "PlaneSpotterPal")
+    LrFileUtils.createAllDirectories(pspDir)
+
+    -- Use registration for stable filename, fall back to random
+    local safeName = registration and registration:gsub("[^%w%-]", "_") or
+        (tostring(os.time()) .. "_" .. math.random(10000, 99999))
+    local filename = "psp_" .. safeName .. ".jpg"
+    local tempPath = LrPathUtils.child(pspDir, filename)
+
+    -- Skip download if file already exists and is recent (< 24h per ToS)
+    if LrFileUtils.exists(tempPath) then
+        local attrs = LrFileUtils.fileAttributes(tempPath)
+        if attrs and attrs.fileModificationDate then
+            local age = os.time() - attrs.fileModificationDate
+            if age < 86400 then
+                return tempPath
+            end
+        end
+    end
 
     local imageData, headers = LrHttp.get(thumbnailUrl)
     if not imageData then
         logger:warn("Failed to download thumbnail: " .. thumbnailUrl)
         return nil
     end
-
-    local tempDir = LrPathUtils.getStandardFilePath("temp")
-    -- Use a hash-like name to avoid collisions
-    local filename = "psp_" .. tostring(os.time()) .. "_" .. math.random(10000, 99999) .. ".jpg"
-    local tempPath = LrPathUtils.child(tempDir, filename)
 
     local file = io.open(tempPath, "wb")
     if not file then
@@ -102,6 +120,25 @@ function PlaneSpottersAPI.downloadThumbnail(thumbnailUrl)
     file:close()
 
     return tempPath
+end
+
+--- Clean up cached thumbnail files older than maxAgeSec (default 24 hours).
+function PlaneSpottersAPI.cleanupThumbnails(maxAgeSec)
+    maxAgeSec = maxAgeSec or 86400
+    local tempDir = LrPathUtils.getStandardFilePath("temp")
+    local pspDir = LrPathUtils.child(tempDir, "PlaneSpotterPal")
+
+    if not LrFileUtils.exists(pspDir) then return end
+
+    local now = os.time()
+    for filePath in LrFileUtils.files(pspDir) do
+        local attrs = LrFileUtils.fileAttributes(filePath)
+        if attrs and attrs.fileModificationDate then
+            if (now - attrs.fileModificationDate) > maxAgeSec then
+                LrFileUtils.delete(filePath)
+            end
+        end
+    end
 end
 
 return PlaneSpottersAPI
