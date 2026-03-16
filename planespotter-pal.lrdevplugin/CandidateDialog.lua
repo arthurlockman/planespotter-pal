@@ -130,7 +130,7 @@ local function buildCandidateRow(f, candidate, index, thumbnailCache)
             title = tostring(index),
             font = { name = "Helvetica", size = 24 },
             text_color = LrColor(0.45, 0.45, 0.45),
-            width = 30,
+            width = 44,
             alignment = "right",
         },
         thumbView,
