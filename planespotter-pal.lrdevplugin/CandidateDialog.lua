@@ -311,11 +311,7 @@ function CandidateDialog.show(candidates, photo, searchContext)
         props.selAll = 1
         props.selArr = arrIndices[1] or 1
         props.selDep = depIndices[1] or 1
-        props.activeTab = "all"
-
-        props:addObserver("selAll", function() props.activeTab = "all" end)
-        props:addObserver("selArr", function() props.activeTab = "arr" end)
-        props:addObserver("selDep", function() props.activeTab = "dep" end)
+        props.activeTabId = "tab_all"
 
         -- Build contents column programmatically (Lua 5.1 can't unpack mid-table)
         local contentItems = {}
@@ -333,6 +329,8 @@ function CandidateDialog.show(candidates, photo, searchContext)
 
         -- Tab view with per-tab dropdown + scrolled list
         contentItems[#contentItems + 1] = f:tab_view {
+            bind_to_object = props,
+            value = LrView.bind("activeTabId"),
             f:tab_view_item {
                 title = string.format("All (%d)", #candidates),
                 identifier = "tab_all",
@@ -414,9 +412,9 @@ function CandidateDialog.show(candidates, photo, searchContext)
 
         if dialogResult == "ok" then
             local idx
-            if props.activeTab == "arr" then
+            if props.activeTabId == "tab_arrivals" then
                 idx = props.selArr
-            elseif props.activeTab == "dep" then
+            elseif props.activeTabId == "tab_departures" then
                 idx = props.selDep
             else
                 idx = props.selAll
