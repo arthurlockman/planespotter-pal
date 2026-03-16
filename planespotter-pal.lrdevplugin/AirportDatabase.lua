@@ -40,4 +40,26 @@ function AirportDatabase.findNearest(lat, lon, radiusNm, maxResults)
     return results
 end
 
+--- Find an airport by ICAO or IATA code.
+-- @param code string ICAO (e.g., "KLAX") or IATA (e.g., "LAX") code
+-- @return table {icao, iata, name, lat, lon, country} or nil
+function AirportDatabase.findByCode(code)
+    if not code or code == "" then return nil end
+    local upper = code:upper()
+    for _, apt in ipairs(airports) do
+        if apt.icao == upper or apt.iata == upper then
+            return {
+                icao = apt.icao,
+                iata = apt.iata,
+                name = apt.name,
+                lat = apt.lat,
+                lon = apt.lon,
+                country = apt.country,
+                distanceNm = 0,
+            }
+        end
+    end
+    return nil
+end
+
 return AirportDatabase

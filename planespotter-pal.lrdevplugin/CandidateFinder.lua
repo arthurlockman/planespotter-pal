@@ -73,7 +73,7 @@ local function loadProvider()
 end
 
 --- Find candidate flights for a photo.
--- @param photoData table {lat, lon, dateTime, heading (optional), focalLength (optional)}
+-- @param photoData table {lat, lon, dateTime, heading (optional), focalLength (optional), airportCode (optional)}
 -- @return candidates table (array of CandidateFlight), or nil + error string
 function CandidateFinder.findCandidates(photoData)
     local AirportDatabase = require "AirportDatabase"
@@ -83,15 +83,29 @@ function CandidateFinder.findCandidates(photoData)
     local radiusNm    = prefs.searchRadiusNm or 5
     local timeWindow  = (prefs.timeWindowMinutes or 5) * 60 -- convert to seconds
 
-    -- Step 1: Find nearest airports
-    local airports = AirportDatabase.findNearest(
-        photoData.lat, photoData.lon, radiusNm, 3
-    )
+    -- Step 1: Find airports — use override code or GPS lookup
+    local airports
+    if photoData.airportCode and photoData.airportCode ~= "" then
+        local apt = AirportDatabase.findByCode(photoData.airportCode)
+        if apt then
+            airports = { apt }
+        else
+            return nil, string.format(
+                "Airport code '%s' not found in database.", photoData.airportCode
+            )
+        end
+    elseif photoData.lat and photoData.lon then
+        airports = AirportDatabase.findNearest(
+            photoData.lat, photoData.lon, radiusNm, 3
+        )
+    else
+        return nil, "No GPS data or airport code provided."
+    end
 
     if #airports == 0 then
         return nil, string.format(
-            "No airports found within %d nm of photo location (%.4f, %.4f).",
-            radiusNm, photoData.lat, photoData.lon
+            "No airports found within %d nm of photo location.",
+            radiusNm
         )
     end
 

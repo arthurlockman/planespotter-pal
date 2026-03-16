@@ -10,6 +10,9 @@ local LrDialogs       = import "LrDialogs"
 local LrApplication   = import "LrApplication"
 local LrLogger        = import "LrLogger"
 local LrProgressScope = import "LrProgressScope"
+local LrView          = import "LrView"
+local LrBinding       = import "LrBinding"
+local LrFunctionContext = import "LrFunctionContext"
 
 local logger = LrLogger("PlaneSpotterPal")
 
@@ -62,29 +65,70 @@ LrTasks.startAsyncTask(function()
         batchMode = (confirm == "ok") and "same" or "each"
     end
 
+    -- Helper: prompt user for airport code
+    local function promptAirportCode()
+        local airportCode = nil
+        LrFunctionContext.callWithContext("AirportPrompt", function(context)
+            local promptProps = LrBinding.makePropertyTable(context)
+            promptProps.airportCode = ""
+            local f = LrView.osFactory()
+
+            local contents = f:column {
+                spacing = f:control_spacing(),
+                bind_to_object = promptProps,
+                f:static_text {
+                    title = "This photo has no GPS coordinates.",
+                    font = "<system/bold>",
+                },
+                f:static_text {
+                    title = "Enter the airport ICAO or IATA code (e.g., KLAX or LAX):",
+                },
+                f:edit_field {
+                    value = LrView.bind("airportCode"),
+                    width_in_chars = 10,
+                    immediate = true,
+                },
+            }
+
+            local result = LrDialogs.presentModalDialog({
+                title = "PlaneSpotter Pal — Airport Code",
+                contents = contents,
+                actionVerb = "Search",
+                cancelVerb = "Skip",
+            })
+
+            if result == "ok" and promptProps.airportCode ~= "" then
+                airportCode = promptProps.airportCode
+            end
+        end)
+        return airportCode
+    end
+
     -- Helper: find candidates for a single photo
-    local function findForPhoto(photo, index)
+    local function findForPhoto(photo, index, airportOverride)
         local gps = photo:getRawMetadata("gps")
         local dateTime = photo:getRawMetadata("dateTimeOriginal")
 
-        if not gps then
-            logger:info("Photo " .. index .. " has no GPS data, skipping")
-            return nil, nil, "no_gps"
-        end
         if not dateTime then
             logger:info("Photo " .. index .. " has no capture time, skipping")
             return nil, nil, "no_time"
+        end
+
+        local airportCode = airportOverride
+        if not gps and not airportCode then
+            return nil, nil, "no_gps"
         end
 
         local heading = photo:getRawMetadata("gpsImgDirection")
         local focalLength = photo:getRawMetadata("focalLength35mm")
 
         local ok, candidates, err, searchContext = LrTasks.pcall(CandidateFinder.findCandidates, {
-            lat = gps.latitude,
-            lon = gps.longitude,
+            lat = gps and gps.latitude,
+            lon = gps and gps.longitude,
             dateTime = dateTime,
             heading = heading,
             focalLength = focalLength,
+            airportCode = airportCode,
         })
 
         if not ok then
@@ -100,25 +144,40 @@ LrTasks.startAsyncTask(function()
         })
         sameProgress:setIndeterminate()
 
-        -- Use the first photo with GPS data for the lookup
+        -- Use the first photo with GPS or time data for the lookup
         local refPhoto, refIndex
+        local needsAirport = false
         for i, photo in ipairs(photos) do
-            if photo:getRawMetadata("gps") and photo:getRawMetadata("dateTimeOriginal") then
+            if photo:getRawMetadata("dateTimeOriginal") then
                 refPhoto = photo
                 refIndex = i
-                break
+                if photo:getRawMetadata("gps") then
+                    break  -- prefer photo with GPS
+                end
+                needsAirport = true
             end
         end
 
         if not refPhoto then
             sameProgress:done()
             LrDialogs.message("PlaneSpotter Pal",
-                "None of the selected photos have GPS and time data.", "warning")
+                "None of the selected photos have capture time data.", "warning")
             return
         end
 
+        local airportCode = nil
+        if needsAirport then
+            sameProgress:done()
+            airportCode = promptAirportCode()
+            if not airportCode then return end
+            sameProgress = LrProgressScope({
+                title = "PlaneSpotter Pal — Finding flights…",
+            })
+            sameProgress:setIndeterminate()
+        end
+
         sameProgress:setCaption("Querying flight data…")
-        local candidates, searchContext, status, errMsg = findForPhoto(refPhoto, refIndex)
+        local candidates, searchContext, status, errMsg = findForPhoto(refPhoto, refIndex, airportCode)
 
         if status == "error" then
             sameProgress:done()
@@ -188,7 +247,17 @@ LrTasks.startAsyncTask(function()
 
         local candidates, searchContext, status, errMsg = findForPhoto(photo, i)
 
-        if status == "no_gps" or status == "no_time" then
+        if status == "no_gps" then
+            -- Prompt for airport code
+            local airportCode = promptAirportCode()
+            if airportCode then
+                candidates, searchContext, status, errMsg = findForPhoto(photo, i, airportCode)
+            else
+                skipped = skipped + 1
+            end
+        end
+
+        if status == "no_time" then
             skipped = skipped + 1
         elseif status == "error" then
             logger:error("Unexpected error for photo " .. i .. ": " .. tostring(errMsg))
