@@ -40,23 +40,12 @@ end
 local function buildCandidateRow(f, candidate, index, thumbnailCache)
     local reg = candidate.registration
 
-    -- Try to get thumbnail from cache or fetch it
+    -- Read from pre-populated cache only
     local thumbPath = nil
     local photoInfo = nil
-    if reg and reg ~= "" then
-        if thumbnailCache[reg] == nil then
-            -- Fetch photo info (may return nil)
-            photoInfo = PlaneSpottersAPI.getPhotoByRegistration(reg)
-            if photoInfo and photoInfo.thumbnailUrl then
-                thumbPath = PlaneSpottersAPI.downloadThumbnail(photoInfo.thumbnailUrl)
-                thumbnailCache[reg] = { path = thumbPath, info = photoInfo }
-            else
-                thumbnailCache[reg] = { path = false, info = nil }
-            end
-        else
-            thumbPath = thumbnailCache[reg].path
-            photoInfo = thumbnailCache[reg].info
-        end
+    if reg and reg ~= "" and thumbnailCache[reg] then
+        thumbPath = thumbnailCache[reg].path
+        photoInfo = thumbnailCache[reg].info
     end
 
     -- Thumbnail column
@@ -162,6 +151,37 @@ function CandidateDialog.show(candidates, photo, searchContext)
 
         local f = LrView.osFactory()
         local thumbnailCache = {}
+
+        -- Pre-fetch all thumbnails with progress indication
+        local uniqueRegs = {}
+        local regOrder = {}
+        for _, c in ipairs(candidates) do
+            local reg = c.registration
+            if reg and reg ~= "" and not uniqueRegs[reg] then
+                uniqueRegs[reg] = true
+                regOrder[#regOrder + 1] = reg
+            end
+        end
+
+        if #regOrder > 0 then
+            local thumbProgress = LrProgressScope({
+                title = "PlaneSpotter Pal — Loading aircraft photos…",
+            })
+            for i, reg in ipairs(regOrder) do
+                if thumbProgress:isCanceled() then break end
+                thumbProgress:setPortionComplete(i - 1, #regOrder)
+                thumbProgress:setCaption(string.format("%s (%d of %d)", reg, i, #regOrder))
+
+                local photoInfo = PlaneSpottersAPI.getPhotoByRegistration(reg)
+                if photoInfo and photoInfo.thumbnailUrl then
+                    local thumbPath = PlaneSpottersAPI.downloadThumbnail(photoInfo.thumbnailUrl)
+                    thumbnailCache[reg] = { path = thumbPath, info = photoInfo }
+                else
+                    thumbnailCache[reg] = { path = false, info = nil }
+                end
+            end
+            thumbProgress:done()
+        end
 
         -- Build search context header
         local contextRows = {}
