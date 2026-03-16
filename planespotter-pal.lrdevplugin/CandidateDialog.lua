@@ -12,6 +12,7 @@ local LrLogger     = import "LrLogger"
 local LrBinding    = import "LrBinding"
 local LrFunctionContext = import "LrFunctionContext"
 local LrColor      = import "LrColor"
+local LrProgressScope = import "LrProgressScope"
 
 local PlaneSpottersAPI = require "PlaneSpottersAPI"
 
