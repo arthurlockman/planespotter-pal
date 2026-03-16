@@ -210,10 +210,11 @@ function CandidateDialog.show(candidates, photo, searchContext)
                     font = "<system/small>",
                 },
                 f:static_text {
-                    title = string.format("🔍 Window: ±%d min  •  Radius: %d nm  •  Provider: %s",
+                    title = string.format("🔍 Window: ±%d min  •  Radius: %d nm  •  Provider: %s%s",
                         searchContext.timeWindowMin or 5,
                         searchContext.radiusNm or 5,
-                        searchContext.providerName or "Unknown"),
+                        searchContext.providerName or "Unknown",
+                        searchContext.cached and "  •  ⚡ Cached" or ""),
                     font = "<system/small>",
                 },
             }

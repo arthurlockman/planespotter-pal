@@ -15,6 +15,31 @@ local logger = LrLogger("PlaneSpotterPal")
 
 local CandidateFinder = {}
 
+-- In-memory cache for API responses, keyed by "icao_bucketFrom_bucketTo"
+-- Entries: { arrivals = {...}, departures = {...}, rateLimitInfo = ... }
+local flightCache = {}
+local BUCKET_SECONDS = 15 * 60  -- 15-minute buckets
+
+--- Round a timestamp down to the nearest bucket boundary.
+local function bucketFloor(timestamp)
+    return math.floor(timestamp / BUCKET_SECONDS) * BUCKET_SECONDS
+end
+
+--- Round a timestamp up to the nearest bucket boundary.
+local function bucketCeil(timestamp)
+    return math.ceil(timestamp / BUCKET_SECONDS) * BUCKET_SECONDS
+end
+
+--- Build a cache key from airport code and bucketed time range.
+local function cacheKey(icao, bucketFrom, bucketTo)
+    return icao .. "_" .. tostring(bucketFrom) .. "_" .. tostring(bucketTo)
+end
+
+--- Clear the flight cache (e.g., between sessions).
+function CandidateFinder.clearCache()
+    flightCache = {}
+end
+
 -- Provider module names keyed by preference value
 local PROVIDER_MODULES = {
     AeroDataBox    = "AeroDataBoxProvider",
@@ -79,72 +104,114 @@ function CandidateFinder.findCandidates(photoData)
     end
 
     -- Step 3: Query arrivals & departures for each airport
+    -- Bucket times to 15-min boundaries for cache reuse
     local dateTimeFrom = photoData.dateTime - timeWindow
     local dateTimeTo   = photoData.dateTime + timeWindow
+    local bFrom = bucketFloor(dateTimeFrom)
+    local bTo   = bucketCeil(dateTimeTo)
 
     local allCandidates = {}
     local seen = {} -- deduplicate by flightNumber + direction
     local lastRateLimitInfo = nil
+    local cacheHits = 0
 
     for _, airport in ipairs(airports) do
-        logger:info("Querying " .. provider.getName() .. " for " .. airport.icao)
+        local key = cacheKey(airport.icao, bFrom, bTo)
+        local cached = flightCache[key]
 
-        -- Prefer getAllFlights (single API call) if provider supports it
-        if provider.getAllFlights then
-            local arrivals, departures, err, rateLimitInfo = provider.getAllFlights(
-                airport.icao, dateTimeFrom, dateTimeTo, apiKey
-            )
-            if rateLimitInfo then
-                lastRateLimitInfo = rateLimitInfo
+        if cached then
+            logger:info("Cache hit for " .. airport.icao .. " (" .. key .. ")")
+            cacheHits = cacheHits + 1
+            if cached.rateLimitInfo then
+                lastRateLimitInfo = cached.rateLimitInfo
             end
-            if err then
-                logger:warn("Flights error for " .. airport.icao .. ": " .. err)
-            else
-                for _, c in ipairs(arrivals or {}) do
-                    local key = (c.flightNumber or "") .. "_" .. c.direction
-                    if not seen[key] then
-                        seen[key] = true
-                        allCandidates[#allCandidates + 1] = c
-                    end
+            for _, c in ipairs(cached.arrivals or {}) do
+                local dk = (c.flightNumber or "") .. "_" .. c.direction
+                if not seen[dk] then
+                    seen[dk] = true
+                    allCandidates[#allCandidates + 1] = c
                 end
-                for _, c in ipairs(departures or {}) do
-                    local key = (c.flightNumber or "") .. "_" .. c.direction
-                    if not seen[key] then
-                        seen[key] = true
-                        allCandidates[#allCandidates + 1] = c
-                    end
+            end
+            for _, c in ipairs(cached.departures or {}) do
+                local dk = (c.flightNumber or "") .. "_" .. c.direction
+                if not seen[dk] then
+                    seen[dk] = true
+                    allCandidates[#allCandidates + 1] = c
                 end
             end
         else
-            -- Fallback: separate calls for providers without getAllFlights
-            local arrivals, arrErr = provider.getArrivals(
-                airport.icao, dateTimeFrom, dateTimeTo, apiKey
-            )
-            if arrivals then
-                for _, c in ipairs(arrivals) do
-                    local key = (c.flightNumber or "") .. "_" .. c.direction
-                    if not seen[key] then
-                        seen[key] = true
-                        allCandidates[#allCandidates + 1] = c
-                    end
-                end
-            elseif arrErr then
-                logger:warn("Arrivals error for " .. airport.icao .. ": " .. arrErr)
-            end
+            logger:info("Querying " .. provider.getName() .. " for " .. airport.icao)
 
-            local departures, depErr = provider.getDepartures(
-                airport.icao, dateTimeFrom, dateTimeTo, apiKey
-            )
-            if departures then
-                for _, c in ipairs(departures) do
-                    local key = (c.flightNumber or "") .. "_" .. c.direction
-                    if not seen[key] then
-                        seen[key] = true
-                        allCandidates[#allCandidates + 1] = c
+            -- Prefer getAllFlights (single API call) if provider supports it
+            if provider.getAllFlights then
+                local arrivals, departures, err, rateLimitInfo = provider.getAllFlights(
+                    airport.icao, bFrom, bTo, apiKey
+                )
+                if rateLimitInfo then
+                    lastRateLimitInfo = rateLimitInfo
+                end
+                if err then
+                    logger:warn("Flights error for " .. airport.icao .. ": " .. err)
+                else
+                    -- Cache the response
+                    flightCache[key] = {
+                        arrivals = arrivals,
+                        departures = departures,
+                        rateLimitInfo = rateLimitInfo,
+                    }
+                    for _, c in ipairs(arrivals or {}) do
+                        local dk = (c.flightNumber or "") .. "_" .. c.direction
+                        if not seen[dk] then
+                            seen[dk] = true
+                            allCandidates[#allCandidates + 1] = c
+                        end
+                    end
+                    for _, c in ipairs(departures or {}) do
+                        local dk = (c.flightNumber or "") .. "_" .. c.direction
+                        if not seen[dk] then
+                            seen[dk] = true
+                            allCandidates[#allCandidates + 1] = c
+                        end
                     end
                 end
-            elseif depErr then
-                logger:warn("Departures error for " .. airport.icao .. ": " .. depErr)
+            else
+                -- Fallback: separate calls for providers without getAllFlights
+                local arrivals, arrErr = provider.getArrivals(
+                    airport.icao, bFrom, bTo, apiKey
+                )
+                local departures, depErr = provider.getDepartures(
+                    airport.icao, bFrom, bTo, apiKey
+                )
+
+                -- Cache even with fallback
+                flightCache[key] = {
+                    arrivals = arrivals,
+                    departures = departures,
+                }
+
+                if arrivals then
+                    for _, c in ipairs(arrivals) do
+                        local dk = (c.flightNumber or "") .. "_" .. c.direction
+                        if not seen[dk] then
+                            seen[dk] = true
+                            allCandidates[#allCandidates + 1] = c
+                        end
+                    end
+                elseif arrErr then
+                    logger:warn("Arrivals error for " .. airport.icao .. ": " .. arrErr)
+                end
+
+                if departures then
+                    for _, c in ipairs(departures) do
+                        local dk = (c.flightNumber or "") .. "_" .. c.direction
+                        if not seen[dk] then
+                            seen[dk] = true
+                            allCandidates[#allCandidates + 1] = c
+                        end
+                    end
+                elseif depErr then
+                    logger:warn("Departures error for " .. airport.icao .. ": " .. depErr)
+                end
             end
         end
     end
@@ -171,6 +238,7 @@ function CandidateFinder.findCandidates(photoData)
         lat           = photoData.lat,
         lon           = photoData.lon,
         rateLimit     = lastRateLimitInfo,
+        cached        = cacheHits > 0,
     }
 
     logger:info(string.format("Found %d candidate flight(s)", #allCandidates))
