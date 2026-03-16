@@ -207,6 +207,52 @@ function Preferences.showSettingsDialog()
 
         f:spacer { height = 12 },
 
+        -- ── Cache Management ─────────────────────────────────────────
+        f:static_text {
+            title = "Cache",
+            font  = "<system/bold>",
+        },
+        f:separator { fill_horizontal = 1 },
+
+        f:static_text {
+            title = "Cached data speeds up repeated lookups. Clear if results seem stale.",
+            font  = "<system/small>",
+        },
+
+        f:row {
+            f:push_button {
+                title  = "Clear Flight Cache",
+                action = function()
+                    local CandidateFinder = require "CandidateFinder"
+                    CandidateFinder.clearCache()
+                    LrDialogs.message("PlaneSpotter Pal",
+                        "Flight data cache cleared.", "info")
+                end,
+            },
+            f:push_button {
+                title  = "Clear Thumbnail Cache",
+                action = function()
+                    local PlaneSpottersAPI = require "PlaneSpottersAPI"
+                    PlaneSpottersAPI.cleanupThumbnails(0)
+                    LrDialogs.message("PlaneSpotter Pal",
+                        "Thumbnail cache cleared.", "info")
+                end,
+            },
+            f:push_button {
+                title  = "Clear All Caches",
+                action = function()
+                    local CandidateFinder = require "CandidateFinder"
+                    local PlaneSpottersAPI = require "PlaneSpottersAPI"
+                    CandidateFinder.clearCache()
+                    PlaneSpottersAPI.cleanupThumbnails(0)
+                    LrDialogs.message("PlaneSpotter Pal",
+                        "All caches cleared.", "info")
+                end,
+            },
+        },
+
+        f:spacer { height = 12 },
+
         -- ── Test Connection ──────────────────────────────────────────
         f:separator { fill_horizontal = 1 },
 
