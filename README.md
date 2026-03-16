@@ -2,6 +2,8 @@
 
 A Lightroom Classic plugin that helps plane spotters identify aircraft in their photos using flight data from nearby airports.
 
+![Demo of PlaneSpotter Pal](img/Demo.gif)
+
 ## How It Works
 
 1. **Select a photo** (or multiple) in Lightroom's Library module
