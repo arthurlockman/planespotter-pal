@@ -38,6 +38,7 @@ You only need an account with **one** provider. AeroDataBox is recommended for g
 ### Getting API Keys
 
 - **AeroDataBox**: Sign up at [RapidAPI](https://rapidapi.com/aedbx-aedbx/api/aerodatabox) — free tier available
+      - **Note:** This is the one I've tested with and recommend so far. FlightAware and FR24 are untested.
 - **FlightAware**: Register at [FlightAware AeroAPI](https://www.flightaware.com/aeroapi/portal)
 - **FlightRadar24**: Subscribe at [FR24 API Portal](https://fr24api.flightradar24.com/) (requires plan with historical data access)
 
