@@ -219,16 +219,29 @@ function CandidateDialog.show(candidates, photo, searchContext)
             }
 
             -- Add API quota info if available
-            if searchContext.rateLimit and searchContext.rateLimit.remaining then
+            if searchContext.rateLimit then
                 local rl = searchContext.rateLimit
-                contextRows[#contextRows + 1] = f:static_text {
-                    title = string.format("📊 API calls remaining: %d / %d",
-                        rl.remaining, rl.limit or 0),
-                    font = "<system/small>",
-                    text_color = rl.remaining < 50
-                        and LrColor(0.8, 0.2, 0.2)
-                        or LrColor(0.4, 0.4, 0.4),
-                }
+                local parts = {}
+
+                if rl.unitsRemaining then
+                    parts[#parts + 1] = string.format("API units: %d / %d",
+                        rl.unitsRemaining, rl.unitsLimit or 0)
+                end
+                if rl.requestsRemaining then
+                    parts[#parts + 1] = string.format("Requests: %d / %d",
+                        rl.requestsRemaining, rl.requestsLimit or 0)
+                end
+
+                if #parts > 0 then
+                    local remaining = rl.unitsRemaining or rl.requestsRemaining or 999
+                    contextRows[#contextRows + 1] = f:static_text {
+                        title = "📊 " .. table.concat(parts, "  •  "),
+                        font = "<system/small>",
+                        text_color = remaining < 50
+                            and LrColor(0.8, 0.2, 0.2)
+                            or LrColor(0.4, 0.4, 0.4),
+                    }
+                end
             end
 
             contextRows[#contextRows + 1] = f:separator { fill_horizontal = 1 }

@@ -114,12 +114,16 @@ local function parseRateLimitHeaders(respHeaders)
     for _, h in ipairs(respHeaders) do
         local name = (h.field or ""):lower()
         if name == "x-ratelimit-requests-limit" then
-            info.limit = tonumber(h.value)
+            info.requestsLimit = tonumber(h.value)
         elseif name == "x-ratelimit-requests-remaining" then
-            info.remaining = tonumber(h.value)
+            info.requestsRemaining = tonumber(h.value)
+        elseif name == "x-ratelimit-api-units-limit" then
+            info.unitsLimit = tonumber(h.value)
+        elseif name == "x-ratelimit-api-units-remaining" then
+            info.unitsRemaining = tonumber(h.value)
         end
     end
-    if info.limit then return info end
+    if info.requestsLimit or info.unitsLimit then return info end
     return nil
 end
 
