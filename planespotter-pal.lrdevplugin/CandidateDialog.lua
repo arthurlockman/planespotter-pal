@@ -148,7 +148,6 @@ function CandidateDialog.show(candidates, photo, searchContext)
 
     LrFunctionContext.callWithContext("CandidateDialog", function(context)
         local props = LrBinding.makePropertyTable(context)
-        props.selectedIndex = 1
 
         local f = LrView.osFactory()
         local thumbnailCache = {}
@@ -308,14 +307,15 @@ function CandidateDialog.show(candidates, photo, searchContext)
         local arrItems, arrRows = buildTabContent(arrIndices, "ARR")
         local depItems, depRows = buildTabContent(depIndices, "DEP")
 
-        -- Each tab gets its own selection property; sync them to selectedIndex
+        -- Each tab gets its own selection property
         props.selAll = 1
         props.selArr = arrIndices[1] or 1
         props.selDep = depIndices[1] or 1
+        props.activeTab = "all"
 
-        props:addObserver("selAll", function(_, _, v) props.selectedIndex = v end)
-        props:addObserver("selArr", function(_, _, v) props.selectedIndex = v end)
-        props:addObserver("selDep", function(_, _, v) props.selectedIndex = v end)
+        props:addObserver("selAll", function() props.activeTab = "all" end)
+        props:addObserver("selArr", function() props.activeTab = "arr" end)
+        props:addObserver("selDep", function() props.activeTab = "dep" end)
 
         -- Build contents column programmatically (Lua 5.1 can't unpack mid-table)
         local contentItems = {}
@@ -413,7 +413,14 @@ function CandidateDialog.show(candidates, photo, searchContext)
         })
 
         if dialogResult == "ok" then
-            local idx = props.selectedIndex
+            local idx
+            if props.activeTab == "arr" then
+                idx = props.selArr
+            elseif props.activeTab == "dep" then
+                idx = props.selDep
+            else
+                idx = props.selAll
+            end
             if idx and idx >= 1 and idx <= #candidates then
                 result = candidates[idx]
             end
