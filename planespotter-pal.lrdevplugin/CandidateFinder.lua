@@ -84,15 +84,19 @@ function CandidateFinder.findCandidates(photoData)
 
     local allCandidates = {}
     local seen = {} -- deduplicate by flightNumber + direction
+    local lastRateLimitInfo = nil
 
     for _, airport in ipairs(airports) do
         logger:info("Querying " .. provider.getName() .. " for " .. airport.icao)
 
         -- Prefer getAllFlights (single API call) if provider supports it
         if provider.getAllFlights then
-            local arrivals, departures, err = provider.getAllFlights(
+            local arrivals, departures, err, rateLimitInfo = provider.getAllFlights(
                 airport.icao, dateTimeFrom, dateTimeTo, apiKey
             )
+            if rateLimitInfo then
+                lastRateLimitInfo = rateLimitInfo
+            end
             if err then
                 logger:warn("Flights error for " .. airport.icao .. ": " .. err)
             else
@@ -166,6 +170,7 @@ function CandidateFinder.findCandidates(photoData)
         providerName  = provider.getName(),
         lat           = photoData.lat,
         lon           = photoData.lon,
+        rateLimit     = lastRateLimitInfo,
     }
 
     logger:info(string.format("Found %d candidate flight(s)", #allCandidates))

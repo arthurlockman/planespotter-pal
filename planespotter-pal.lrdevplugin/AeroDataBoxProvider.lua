@@ -107,6 +107,22 @@ local function parseFlightList(flights, direction, icaoCode)
     return candidates
 end
 
+--- Extract rate limit info from RapidAPI response headers.
+local function parseRateLimitHeaders(respHeaders)
+    if not respHeaders then return nil end
+    local info = {}
+    for _, h in ipairs(respHeaders) do
+        local name = (h.field or ""):lower()
+        if name == "x-ratelimit-requests-limit" then
+            info.limit = tonumber(h.value)
+        elseif name == "x-ratelimit-requests-remaining" then
+            info.remaining = tonumber(h.value)
+        end
+    end
+    if info.limit then return info end
+    return nil
+end
+
 --- Fetch all flights (arrivals + departures) in a single API call.
 function AeroDataBoxProvider.getAllFlights(icaoCode, dateTimeFrom, dateTimeTo, apiKey)
     local fromStr = formatLocalTime(dateTimeFrom)
@@ -125,6 +141,8 @@ function AeroDataBoxProvider.getAllFlights(icaoCode, dateTimeFrom, dateTimeTo, a
         return nil, nil, "AeroDataBox API request failed"
     end
 
+    local rateLimitInfo = parseRateLimitHeaders(respHeaders)
+
     local data, _, err = json.decode(response)
     if err or not data then
         return nil, nil, "Failed to parse AeroDataBox response: " .. tostring(err)
@@ -137,7 +155,7 @@ function AeroDataBoxProvider.getAllFlights(icaoCode, dateTimeFrom, dateTimeTo, a
     local arrivals = parseFlightList(data.arrivals or {}, "arrival", icaoCode)
     local departures = parseFlightList(data.departures or {}, "departure", icaoCode)
 
-    return arrivals, departures, nil
+    return arrivals, departures, nil, rateLimitInfo
 end
 
 -- Legacy single-direction methods (for provider interface compatibility)

@@ -196,8 +196,22 @@ function CandidateDialog.show(candidates, photo, searchContext)
                         searchContext.providerName or "Unknown"),
                     font = "<system/small>",
                 },
-                f:separator { fill_horizontal = 1 },
             }
+
+            -- Add API quota info if available
+            if searchContext.rateLimit and searchContext.rateLimit.remaining then
+                local rl = searchContext.rateLimit
+                contextRows[#contextRows + 1] = f:static_text {
+                    title = string.format("📊 API calls remaining: %d / %d",
+                        rl.remaining, rl.limit or 0),
+                    font = "<system/small>",
+                    text_color = rl.remaining < 50
+                        and LrColor(0.8, 0.2, 0.2)
+                        or LrColor(0.4, 0.4, 0.4),
+                }
+            end
+
+            contextRows[#contextRows + 1] = f:separator { fill_horizontal = 1 }
         end
 
         -- Count arrivals & departures and build filtered index lists
